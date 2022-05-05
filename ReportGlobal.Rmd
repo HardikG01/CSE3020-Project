@@ -1,0 +1,480 @@
+---
+title: "Climate Change - Time Series Analysis(Global)"
+subtitle: "DV Project"
+output: html_document
+---
+
+# Faraz Suhail (19BCE1525), Hardik Govil (19BCE1530)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+par(mar=c(1,1,1,1))
+library(tidyverse)
+library(tseries)
+library(fpp2)
+library(gridExtra)
+library(plotly)
+```
+
+
+### Structure of data
+```{r, echo=FALSE}
+rm(list=ls())
+data = read.csv('GlobalTemperatures.csv')
+
+str(data) # contains NA 
+```
+
+### Summary of data
+```{r, echo=FALSE}
+summary(data)
+```
+
+### Identify these NA values [Data Cleaning]
+```{r, echo=TRUE}
+#######################################################
+# For Land Average Temperature and Uncertainty Column
+#######################################################
+sum(is.na(data[1:121,]$LandAverageTemperature))
+sum(is.na(data[121:3192,]$LandAverageTemperature))
+data$dt[121]
+tail(data$dt,1)
+
+#######################################################
+# For other columns apart from Land Average Temp
+#######################################################
+sum(is.na(data$LandAndOceanAverageTemperature))
+sum(is.na(data[1201:3192,]$LandMaxTemperature))
+sum(is.na(data[1201:3192,]$LandMinTemperature))
+sum(is.na(data[1201:3192,]$LandAndOceanAverageTemperature))
+data$dt[1201]
+tail(data$dt,1)
+```
+
+### Visualize the Time Series Data
+```{r,echo=FALSE}
+landAvgTemps <- data[121:3192,]$LandAverageTemperature
+Y = ts(landAvgTemps,start=c(1760,1),frequency = 12)
+print(paste("Start time:",start(Y)[1],start(Y)[2]))
+print(paste("End time:",end(Y)[1],end(Y)[2]))
+
+autoplot(Y , main="Time Series Plot [1760-2015]")
+autoplot(decompose(Y))
+```
+
+##### INFERENCE: 
+* A weak trend can be seen in decomposition plot.
+
+#### Slicing the time period to see the curves properly
+```{r,echo=FALSE}
+######################################################
+## Slicing the time period to see the curves properly
+######################################################
+
+autoplot(window(Y,1760,1800),main = "Time Series Plot [1760-1800]") + ylab("Temperature (C)")
+#autoplot(window(Y,1800,1850),main = "Time Series Plot [1800-1850]")
+autoplot(window(Y,1850,1900),main = "Time Series Plot [1850-1900]") + ylab("Temperature (C)")
+#autoplot(window(Y,1900,1950),main = "Time Series Plot [1900-1950]") + ylab("Temperature (C)")
+#autoplot(window(Y,1915,1965),main = "Time Series Plot [1915-1965]") + ylab("Temperature (C)")
+autoplot(window(Y,1965,2015),main = "Time Series Plot [1965-2015]") + ylab("Temperature (C)")
+
+```
+
+##### INFERENCE: 
+* Y-scale range changes according to the time period. 
+* Some values are negative during 1760-1800.
+* From 1850-1900 we can see all values are positive i.e. above 0°C.
+* During 1965- 2015 the lowest values are found around 2°C.
+
+```{r,echo=FALSE}
+data %>%
+  separate(col = dt, into = c("Year", "Month", "Day"), convert = TRUE) -> data_monthly 
+
+data_monthly$Day=NULL
+print("[INFO] Converted Date Column into Year and Month column for doing monthly and yearly analysis on the Time Series")
+
+```
+
+
+### Season wise comparison trend Visualization
+```{r,echo=FALSE}
+
+data_monthly = data_monthly %>%
+  mutate(season=ifelse(Month %in% c(6,7,8),"Summer",
+                       ifelse(Month %in% c(9,10,11),"Fall",
+                              ifelse(Month %in% c(12,1,2),"Winter","Spring")
+                       )))
+
+ggplot(data = data_monthly, 
+       aes(Year,LandAverageTemperature, colour=season)) +
+  geom_point(na.rm = T) +
+  xlab("Year") +
+  ggtitle("Land Average temperature by year")
+```
+
+##### INFERENCE: 
+* There is a distinct separation between Summer and Winter in terms of temperature range.
+* Whereas Spring and Fall temperatures are almost in the same range.
+
+
+### Month wise trend visualization in Average Land Temperature
+```{r,echo=FALSE}
+
+monthly_info = data_monthly %>%
+  group_by(Month) %>%
+  summarise(mean_temp = mean(LandAverageTemperature,na.rm=T),
+            max_temp = max(LandAverageTemperature,na.rm=T),
+            min_temp = min(LandAverageTemperature,na.rm=T))
+
+monthly_info$Month_name = factor(1:12,labels=month.abb)
+
+g = ggplot(monthly_info, aes(x=Month_name)) +
+  geom_point(aes(y = mean_temp,color="mean_temp")) +
+  geom_line(aes(y = mean_temp, group=1, color="mean_temp")) + geom_point(aes(y = max_temp, color = "max_temp")) +
+  geom_line(aes(y = max_temp , group=1,  color="max_temp")) +
+  geom_point(aes(y = min_temp, color = "min_temp")) +
+  geom_line(aes(y = min_temp , group=1, color="min_temp") ) + scale_colour_manual("", breaks = c("mean_temp", "max_temp", "min_temp"),values = c("mean_temp"="forestgreen", "max_temp"="darkred", "min_temp"="steelblue")) +
+  xlab("") + ylab("Temperature (C)") +
+  labs(title = "Monthly Avg Global Land Temperature [Mean-Max-Min]")
+
+ggplotly(g)
+  
+
+```
+
+
+##### INFERENCE: 
+* The temperature rises drastically from April and drops during October, this shows the seasonal nature of temperature throughout the year. 
+* The hottest days occur during the month of July and coldest during January.
+
+
+### Yearly trend Visualization
+```{r,echo=FALSE}
+data_yearly = data_monthly %>% 
+  group_by(Year) %>% 
+  summarise(LandAverageTemperature = mean(LandAverageTemperature,na.rm=T),
+            LandAverageTemperatureUncertainty = mean(LandAverageTemperatureUncertainty,na.rm=T),
+            LandMaxTemperature = mean(LandMaxTemperature,na.rm=T),
+            LandMaxTemperatureUncertainty = mean(LandMaxTemperatureUncertainty,na.rm=T),
+            LandMinTemperature = mean(LandMinTemperature,na.rm=T),
+            LandMinTemperatureUncertainty = mean(LandMinTemperatureUncertainty,na.rm=T),
+            LandAndOceanAverageTemperature = mean(LandAndOceanAverageTemperature,na.rm=T),
+            LandAndOceanAverageTemperatureUncertainty = mean(LandAndOceanAverageTemperatureUncertainty,na.rm=T))
+
+
+ggplot(data_yearly[101:266,], aes(x=Year, y=LandAverageTemperature)) +
+  geom_point() + geom_smooth(method = 'loess',formula = 'y~x') +
+  ggtitle("Yearly Global Land Average Temperature 1850-2015") +
+  geom_errorbar(aes(x = Year,ymin = LandAverageTemperature - LandAverageTemperatureUncertainty,
+                    ymax = LandAverageTemperature + LandAverageTemperatureUncertainty))+
+  ylab("Average Temperature, Celsius")
+
+# LandAverageTemperature
+ggplot(data_yearly, aes(x=Year, y=LandAverageTemperature)) +
+  geom_line() + geom_smooth(method = 'loess',formula = 'y~x') +
+  ggtitle("Yearly Global Land Average Temperature 1750-2015")
+
+# LandAndOCeanAverageTemperature
+ggplot(data_yearly[101:266,], aes(x=Year, y=LandAndOceanAverageTemperature)) +
+  geom_line() + geom_smooth(method = 'loess',formula = 'y~x') +
+  ggtitle("Yearly Global Land And Ocean AverageTemperature 1850-2015")
+
+```
+
+##### INFERENCE: 
+* All the graphs above shows subtle increase in the mean land temperature over the years. 
+* This supports the fact of climate change that has been reported by many environmentalist.
+
+### Comparison Max and Min Land Temperature
+```{r,echo=FALSE}
+
+# LandMaxTemperature
+ggplot(data_yearly[101:266,], aes(x=Year, y=LandMaxTemperature)) +
+  geom_line() + geom_smooth(method = 'loess',formula = 'y~x') +
+  ggtitle("Yearly Global Land Max Temperature 1850-2015")
+
+# LandMinTemperature
+ggplot(data_yearly[101:266,], aes(x=Year, y=LandMinTemperature)) +
+  geom_line() + geom_smooth(method = 'loess',formula = 'y~x') +
+  ggtitle("Yearly Global Land Min Temperature 1850-2015")
+
+
+q1 = qplot(Year, LandMaxTemperature, data=na.omit(data_yearly), main="Global Yearly Max Temperature 1850-2015",geom=c("point","smooth"))+ 
+  aes(colour = LandMaxTemperature) + 
+  scale_color_gradient(low="blue", high="red")
+
+q2 = qplot(Year, LandMinTemperature, data=na.omit(data_yearly), main="Global Yearly Min Temperature 1850-2015",geom=c("point","smooth"))+ 
+  aes(colour = LandMinTemperature) + 
+  scale_color_gradient(low="cyan", high="blue")
+
+grid.arrange(q1, q2,nrow=2, ncol=1)
+```
+
+##### INFERENCE:
+* Temperatures have increased by a difference of approx 2°C in terms of both max and min temperature.
+* Again this shows that there is an anomaly in mean temperature that corresponds to climate change.
+
+### Trend And Seasonality investigation
+```{r,echo=FALSE}
+autoplot(window(Y,1990,2015)) + geom_smooth(method = 'loess', formula = 'y ~ x') + ggtitle("Time plot 1990-2015") + ylab("Avg Land Temperature (C)")
+
+print("INFERENCE: Visually inspecting we dont see any trend in this Monthly Time Series")
+
+ggseasonplot(window(Y,1990,2015)) + ggtitle("Seasonal plot [1990-2015]")
+
+g1 = ggsubseriesplot(window(Y,1990,2015)) + ggtitle("Sub Series Plot [1990-2015]") + ylab("Avg Land Temperature (C)")
+
+ggplotly(g1)
+
+#plot(window(Y,1990,2015))
+#title(main = "TS 1990-2015")
+#abline(reg = lm(Y~time(Y)))
+
+boxplot(window(Y,1990,2015)~cycle(window(Y,1990,2015)), ylab = "Avg Land Temperature (C)", xlab="Months", main="boxplot of Avg Land Temperature on Monthly basis")
+
+print("Above three graphs: Seasonality plot, Subseriesplot and boxplot visualization shows whether the time series contains the seasonality component.")
+
+interested_years = c(1860,1880,1900,1920,1940,1960,1980,2000,2015)
+data_s = data_monthly %>%
+  filter(Year %in% interested_years) %>%
+           group_by(Year)
+
+data_s$Year <- as.factor(data_s$Year)
+qplot(x =  Year, y = LandAverageTemperature, data = data_s) +
+  ggtitle("Average Temperature for 20 Year Intervals")+geom_boxplot(fill="turquoise")
+
+
+# yearly trend
+plot(aggregate(Y, FUN=mean),ylab="Temperature (C)")
+title(main="Yearly trend plot")
+
+plot(diff(aggregate(Y, FUN=mean)),ylab="Temperature (C)")
+title(main="First Difference Yearly trend plot")
+
+```
+
+##### INFERENCE:
+* There is no strong trend in Monthly Time Series which can be seen in the Time Plot 1990-2015.
+* Strong Seasonality is present in the Monthly Time Series which is evident form seasonality plot.
+* In the Box plot of "Average Temperature for 20 years" we can see gradual increase in the median temperatures over the 20 year interval.
+* The yearly time series shows a slight positive trend.
+* The first difference of yearly time series removes this trend.
+
+### Apply forecasting ARIMA model on the ts data
+* Two Direction: Monthly and Yearly forecasting
+
+```{r,echo=FALSE}
+
+monthly_ts = data_monthly$LandAverageTemperature[121:3192]
+yearly_ts = data_yearly$LandAndOceanAverageTemperature[101:266]
+
+Y_m = ts(monthly_ts,start=c(1760,1),frequency = 12)
+#Y_y = ts(yearly_ts,start=c(1760),frequency = 1)
+Y_y = ts(yearly_ts,start=c(1850),frequency = 1)
+
+acf(Y_m, main="Monthly Time Series 1760-2015 [ACF]")
+
+pacf(Y_m, main="Monthly Time Series 1760-2015 [PACF]")
+
+acf(diff(Y_y), main="Yearly Time Series 1850-2015 [ACF]")
+
+pacf(diff(Y_y), main="Yearly Time Series 1850-2015 [PACF]")
+
+``` 
+
+
+##### OBSERVATIONS:
+* AR - p - PACF and MA - q - ACF
+* Auto correlation is seen less in yearly Time series as most of lags are within the blue line
+
+### ADF Test
+```{r,echo=FALSE}
+
+print("Monthly Time series")
+adf.test(Y_m,alternative=c("stationary"))
+
+print("Yearly Time series")
+adf.test(Y_y,alternative = c("stationary"))
+
+```
+
+##### OBSERVATION:
+* Monthly Time Series ~ p-value < 0.05 ~ alternate hypothesis accepted ~ stationary series 
+* Yearly Time Series ~ p-value > 0.05 ~ cannot reject null hypothesis ~ non stationary series 
+
+### BenchMark: SNAIVE method
+* y_t = y_{t-s} + e_t
+
+* This is a naive method in which we say the forecast value of this month will be the value of same month in previous year plus some error term.
+```{r,echo=FALSE}
+
+ts_1915_2015 = window(Y_m,1915,c(2015,12))
+fit = snaive(ts_1915_2015)
+print(paste("Residual SD:",sqrt(fit$model$sigma2)))
+checkresiduals(fit)
+
+```
+
+
+#### INFERENCE:
+
+* SNaive method was fitted to time series from 1915-2015 and we can see from residual plots that most of lags are outside blue lines hence the model is not able to fit the data properly.
+
+* This gives us an idea of the benchmark performance for the forecasting model that we are going to try next.
+
+* The p-value from Ljung-box test comes out to be very small hence autocorrelation is high in residuals which is evident from the ACF graph.
+
+
+### ARIMA MODEL
+```{r,echo=FALSE}
+
+ts_1915_2015 = window(Y_m,1915,c(2015,12))
+fit_arima_m = auto.arima(ts_1915_2015,D=1,trace =T,allowdrift = F)
+
+print("Model Summary")
+print(summary(fit_arima_m)) 
+print(paste("Residual SD:",sqrt(fit_arima_m$sigma2)))
+checkresiduals(fit_arima_m)
+
+```
+##### OBSERVATION:
+* ARIMA model does a better job than Seasonal Naive method becuase the Residual SD of ARIMA is lower.
+
+* The residual of ARIMA fitted good but still has some auto-correlation which can be seen in ACF as some lags are outside the blue line.
+
+* Also Ljung-Box Test shows that p-value (< 0.05) is significant hence alternate hypothesis is accepted that means auto-correlation is present in the residuals.
+
+* This tells us that there is an even better model can be made to that fits time series perfectly but it might be even more complicated than ARIMA.
+
+```{r,echo=FALSE}
+ 
+fcst = forecast(fit_arima_m,h = 60)
+autoplot(fcst,include = 192,ylab="Average Land Temperature (C)", xlab="Year")
+
+#print(paste("Mean Global Land Temperature 2020:",round(mean(tail(fcst$mean,12)),1)))
+
+```
+
+
+##### Monthly Forecast values for Year 2020
+```{r,echo=F}
+tail(fcst$mean,12)
+```
+
+
+#### ARIMA Model on Yearly TS
+```{r,echo=FALSE}
+
+fit_arima_y = auto.arima(Y_y,d=1,trace=T,allowdrift = T)
+
+print("Model Summary")
+print(summary(fit_arima_y))
+print(paste("Residual SD:",sqrt(fit_arima_y$sigma2)))
+checkresiduals(fit_arima_y)
+
+```
+
+##### OBSERVATION:
+
+* The Ljung-Box Test shows that p-value (> 0.05) is not significant hence null hypothesis cannot be rejected  that means there isn't any strong auto-correlation in the residuals.
+
+* This tells us the model fits the residual properly which is evident from ACF as almost all the lags are within the blue lines.
+
+```{r,echo=FALSE}
+
+fcst = forecast(fit_arima_y,h = 10,level=95)
+autoplot(fcst, include=100, ylab="Average Land Ocean Temperature (C)", xlab="Year")
+
+```
+
+
+##### Yearly Forecast values till 2021
+```{r,echo=FALSE}
+fcst$mean
+
+print(paste("Mean Global Land and Ocean Temperature 2020:",round(fcst$mean[5],4),"°C"))
+print(paste("Mean Global Land and Ocean Temperature 2021:",round(fcst$mean[6],3),"°C"))
+```
+
+#### Conclusion:
+
+* The Forecasted values in plot captures the trend and seasonality of the original time series.
+
+* The Forecasted value for Mean Global Land and Ocean Temperature for year 2020 is '15.9532 °C' with an uncertainty of plus and minus of 1°C.
+
+* The Forecasted value for 2021 is '15.9593 °C' which shows an increase in temperature from that of 2020
+
+```{r,echo = T}
+require(fGarch)
+require(rugarch)
+# okay to use the provided data - no transformation is needed
+plot.ts(Y_y)
+```
+
+```{r,echo = T}
+model2<-garchFit(~garch(1,1), data=Y_y, trace=F)
+summary(model2)
+predict(model2, n.ahead = 10, trace = FALSE)
+```
+
+```{r,echo = T}
+model3<-garchFit(formula = ~arma(3,1,1)+garch(1,1), data=Y_y, trace=F)
+summary(model3)
+```
+
+
+```{r}
+m3 <-  ugarchspec(variance.model = list(model="fGARCH", 
+                                        submodel = "GARCH", 
+                                            garchOrder=c(1, 1)), 
+                      mean.model = list(armaOrder=c(3,1,1)))
+```
+
+```{r}
+fit <- ugarchfit(m3, Y_y,
+                 solver = "hybrid")
+print(fit)
+fore <- ugarchforecast(fit, n.ahead = 10)
+pred <- fore@forecast$seriesFor
+pred
+```
+
+### FB's Prophet Model
+
+* Prophet is a procedure for forecasting time series data based on an additive model where non-linear trends are fit with yearly, weekly, and daily seasonality, plus holiday effects.
+
+* It works best with time series that have strong seasonal effects and several seasons of historical data.
+
+
+```{r,echo=FALSE}
+library(prophet)
+
+# column : ds,y
+
+df_y_ts = data.frame(ds=data_yearly[101:266,]$Year,y=data_yearly[101:266,]$LandAndOceanAverageTemperature)
+
+df_y_ts$ds = as.character(df_y_ts$ds)
+df_y_ts$ds <- as.Date(df_y_ts$ds, format="%Y")
+
+prop_fit <- prophet(df_y_ts)
+Future1 = make_future_dataframe(prop_fit,periods = 10, freq = "year")
+
+forecast1 = predict(prop_fit,Future1)
+prop_fit$component.modes
+tail(forecast1[c('ds','yhat')])
+
+dyplot.prophet(prop_fit,forecast1)
+prophet_plot_components(prop_fit,forecast1)
+
+```
+
+##### OBSERVATION:
+
+* Prophet model gives a forecast which is almost similar to ARIMA model's forecast.
+
+* The interactive graph plot can be used to see the forecast values and trend for the future.
+
+* Plot component function showcases the trend and yearly additive component of the time series.
